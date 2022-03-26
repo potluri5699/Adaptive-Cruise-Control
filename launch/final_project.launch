@@ -1,7 +1,7 @@
 <?xml version="1.0"?>
 <launch>
 
-  <include file="$(find ugv_course_launch)/launch/two_audibot_road_world.launch" />
+  <include file="$(find audibot_final_project)/launch/two_audibot_road_world.launch" />
 
   <include file="$(find audibot_lane_detection)/launch/lane_detection.launch" >
     <arg name="nodelet" value="true" />
