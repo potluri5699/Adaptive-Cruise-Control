@@ -25,6 +25,9 @@ geometry_msgs::Twist cmd_vel_a1, cmd_vel_a2;
 
 double laser_ranges[laser_readings];
 double laser_angles[laser_readings];
+double laser_max_distance = 0;
+double laser_angle_at_max_distance = 0;
+double lidar_distance = 0;
 
 
 // Namespace matches ROS package name
@@ -84,37 +87,68 @@ namespace audibot_final_project {
     for(int i=0; i<laser_readings; i++){
       laser_ranges[i] = msg->ranges[i];
       laser_angles[i] = msg->angle_min + (i * msg->angle_increment);
-    }
-    // ROS_INFO("Laser scan at -45, 0, 45: (%f, %f, %f)", laser_ranges[0], laser_ranges[180], laser_ranges[359]);
-  }
 
-  void final_project::level1TimerCallback(const ros::TimerEvent& event)
-  {
-    /* Values of a2 will be same as audibot_path_following package */
+      if(!(isinf(laser_ranges[i])))
+      {
+        if(laser_ranges[i] > laser_ranges[i-1]){
+          laser_max_distance = laser_ranges[i];
+          laser_angle_at_max_distance = laser_angles[i];
+        }
+      }
+      else{
+        /* Do Nothing */
+        // ROS_INFO("Laser scan is not valid value i.e. infinity");
+      }
+    }
+
+    double x = laser_max_distance * cos(laser_angle_at_max_distance);
+    double y = laser_max_distance * sin(laser_angle_at_max_distance);
+    lidar_distance = sqrt ((x*x) + (y*y));
+    ROS_INFO("LIDAR Distance: %f", lidar_distance);
+
+    // ROS_INFO("Laser scan at -45, 0, 45: (%f, %f, %f)", laser_ranges[0], laser_ranges[180], laser_ranges[359]);
+    
+    /* Speed control algorithm */
     cmd_vel_a2.linear.x = a2_path_linx;
     cmd_vel_a2.angular.z = a2_path_angz;
 
-    /* Implement PID controller for linear.x to prevent collision */
-    dist_a1_a2 = sqrt(((a2_x - a1_x)*(a2_x - a1_x)) + ((a2_y - a1_y)*(a2_y - a1_y)) + ((a2_z - a1_z)*(a2_z - a1_z)));
-    
-    ROS_INFO("Distance: %f", dist_a1_a2);
-
-    if (dist_a1_a2 < target_dist){
+    if(lidar_distance < target_dist){
       cmd_vel_a1.linear.x = 19;
       cmd_vel_a1.angular.z = a1_path_angz;
     }
     else{
       cmd_vel_a1.linear.x = a1_path_linx;
       cmd_vel_a1.angular.z = a1_path_angz;
-      ROS_INFO("a1 Linear Vel : %f", a1_path_linx);
-      ROS_INFO("a1 Angular Vel: %f", a1_path_angz);
     }
-
-
-
 
     vel_a1_pub.publish(cmd_vel_a1);
     vel_a2_pub.publish(cmd_vel_a2);
+  }
+
+  void final_project::level1TimerCallback(const ros::TimerEvent& event)
+  {
+    // /* Values of a2 will be same as audibot_path_following package */
+    // cmd_vel_a2.linear.x = a2_path_linx;
+    // cmd_vel_a2.angular.z = a2_path_angz;
+
+    // /* Implement PID controller for linear.x to prevent collision */
+    // dist_a1_a2 = sqrt(((a2_x - a1_x)*(a2_x - a1_x)) + ((a2_y - a1_y)*(a2_y - a1_y)) + ((a2_z - a1_z)*(a2_z - a1_z)));
+    
+    // ROS_INFO("Controller Distance: %f", dist_a1_a2);
+
+    // if (dist_a1_a2 < target_dist){
+    //   cmd_vel_a1.linear.x = 19;
+    //   cmd_vel_a1.angular.z = a1_path_angz;
+    // }
+    // else{
+    //   cmd_vel_a1.linear.x = a1_path_linx;
+    //   cmd_vel_a1.angular.z = a1_path_angz;
+    //   // ROS_INFO("a1 Linear Vel : %f", a1_path_linx);
+    //   // ROS_INFO("a1 Angular Vel: %f", a1_path_angz);
+    // }
+
+    // vel_a1_pub.publish(cmd_vel_a1);
+    // vel_a2_pub.publish(cmd_vel_a2);
   }
 
   
