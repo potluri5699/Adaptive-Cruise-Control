@@ -29,7 +29,27 @@
     <node pkg="audibot_twist_controller" type="audibot_twist_node" name="twist_control" output="screen" />
   </group>
 
-    <!-- Launch our project node here!!! -->
-  <node pkg="audibot_final_project" type="audibot_final_project" name="audibot_final_project" output="screen" />
+  <!-- Launch our project node here!!! -->
+  <arg name="level"/>
+
+  <group if="$(eval level == 'level1')" >
+    <node pkg="audibot_final_project" type="audibot_final_project" name="audibot_final_project" output="screen" >
+      <param name="level" type="string" value="level1" />
+    </node>
+  </group>
+
+  <group if="$(eval level == 'level2')" >
+    <node pkg="audibot_final_project" type="audibot_final_project" name="audibot_final_project" output="screen" >
+      <param name="level" type="string" value="level2" />
+    </node>
+  </group>
+
+  <group if="$(eval level == 'level3')" >
+    <node pkg="audibot_final_project" type="audibot_final_project" name="audibot_final_project" output="screen" >
+      <param name="level" type="string" value="level3" />
+    </node>
+  </group>
+  
+  <!-- <node type="rviz" name="rviz" pkg="rviz" args="-d $(find audibot_final_project)/rviz/simulation.rviz" /> -->
 
 </launch>

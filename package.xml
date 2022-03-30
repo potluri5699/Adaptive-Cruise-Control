@@ -5,7 +5,7 @@
   <description>
   Audibot Cruise Control Project
   </description>
-  <maintainer email="potluri@oakland.edu">abc</maintainer>
+  <maintainer email="potluri@oakland.edu"></maintainer>
   <license>TODO</license>
 
   <buildtool_depend>catkin</buildtool_depend>

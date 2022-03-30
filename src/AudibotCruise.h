@@ -8,6 +8,9 @@
 #include <tf/transform_broadcaster.h> 
 #include <geometry_msgs/Twist.h> 
 #include <laser_geometry/laser_geometry.h>
+#include <sensor_msgs/PointCloud2.h>
+#include <sensor_msgs/Image.h>
+#include <string>
 #include <math.h>
 
 // Namespace matches ROS package name
@@ -16,25 +19,29 @@ namespace audibot_final_project{
 class final_project
 {
   public:
-  final_project(ros::NodeHandle n, ros::NodeHandle pn); 
+  final_project(ros::NodeHandle n, ros::NodeHandle pn);
 
   private:
-  void level1TimerCallback(const ros::TimerEvent& event);
+  void algoTimerCallback(const ros::TimerEvent& event);
   void recvFix_a1(const sensor_msgs::NavSatFixConstPtr& msg);
   void recvFix_a2(const sensor_msgs::NavSatFixConstPtr& msg);
   void recvPathVel_a1(const geometry_msgs::TwistConstPtr& msg);
   void recvPathVel_a2(const geometry_msgs::TwistConstPtr& msg);
   void recvLaserScan_a1(const sensor_msgs::LaserScanConstPtr& msg);
+  void recvCameraImage_a1(const sensor_msgs::ImageConstPtr& msg);
+  void Level_1(void);
+  void Level_2(void);
+  void Level_3(void);
   ros::Subscriber gps_a1_sub;
   ros::Subscriber gps_a2_sub;
   ros::Subscriber vel_path_a1;
   ros::Subscriber vel_path_a2;
-  ros::Subscriber laser_a1_aub;
-  ros::Subscriber laser_a2_sub;
+  ros::Subscriber laser_a1_sub;
+  ros::Subscriber camera_a1_sub;
   ros::Publisher vel_a1_pub;
   ros::Publisher vel_a2_pub;
-  ros::Timer level1_timer;
-
+  ros::Publisher cloud_a1_pub;
+  ros::Timer algoTimer;
 };
 
 }
