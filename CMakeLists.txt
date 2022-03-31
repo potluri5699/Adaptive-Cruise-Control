@@ -9,12 +9,15 @@ find_package(catkin REQUIRED COMPONENTS
   std_msgs
   geometry_msgs
   laser_geometry
+  cv_bridge
 )
+find_package(OpenCV REQUIRED)
 
 catkin_package()
 
 include_directories(
   ${catkin_INCLUDE_DIRS}
+  ${OpenCV_INCLUDE_DIRS}
 )
 
 add_executable(audibot_final_project
@@ -24,4 +27,5 @@ add_executable(audibot_final_project
 
 target_link_libraries(audibot_final_project
   ${catkin_LIBRARIES}
+  ${OpenCV_LIBS}
 )

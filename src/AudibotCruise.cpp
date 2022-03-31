@@ -32,6 +32,14 @@ double laser_max_distance = 0;
 double laser_angle_at_max_distance = 0;
 double lidar_distance = 0;
 
+double lower_h = 110;
+double lower_s = 150;
+double lower_v = 150;
+
+double upper_h = 110;
+double upper_s = 150;
+double upper_v = 150;
+
 std::string param;
 int level;
 
@@ -73,10 +81,19 @@ namespace audibot_final_project {
       level = 3;
       ROS_INFO("Running Level 3");
     }
+    else if(param == "pcl")
+    {
+      level = 4; /* Testing PCL data */
+      ROS_INFO("Test PCL data");
+    }
     else
     {
       level = 0;
     }
+  #if DEBUG
+    cv::namedWindow("Raw", cv::WINDOW_NORMAL);
+    cv::namedWindow("Blue", cv::WINDOW_NORMAL);
+  #endif
   }
   
   void final_project::recvFix_a1(const sensor_msgs::NavSatFixConstPtr& msg)
@@ -121,10 +138,22 @@ namespace audibot_final_project {
     }
 
     projector.projectLaser(*msg, cloud);
+    cloud_a1_pub.publish(cloud);
   }
 
   void final_project::recvCameraImage_a1(const sensor_msgs::ImageConstPtr& msg)
   {
+    cv_bridge::CvImagePtr cv_ptr = cv_bridge::toCvCopy(msg, sensor_msgs::image_encodings::BGR8);
+    cv::Mat raw_img = cv_ptr->image;
+    cv::Mat raw_hsv, img_mask;
+    cv::cvtColor(raw_img, raw_hsv, CV_BGR2HSV);
+    cv::inRange(raw_hsv, cv::Scalar(lower_h, lower_s, lower_v), cv::Scalar(upper_h, upper_s, upper_v), img_mask);
+
+  #if DEBUG
+    cv::imshow("Raw", raw_img);
+    cv::imshow("Blue", img_mask);
+    cv::waitKey(1);
+  #endif
 
   }
 
@@ -141,10 +170,12 @@ namespace audibot_final_project {
       case 3:
         final_project::Level_3();
         break;
+      case 4:
+        final_project::Level_4();
+        break;
       default:
         cmd_vel_a1.linear.x = 0;
         cmd_vel_a2.linear.x = 0;
-        ROS_INFO("Enter Level 1 or 2 or 3:");
         break;
     }
   }
@@ -221,6 +252,21 @@ namespace audibot_final_project {
 
   void final_project::Level_3(void)
   {
+
+  }
+
+  void final_project::Level_4(void)
+  {
+    /* Values of a2 will be same as audibot_path_following package */
+    cmd_vel_a2.linear.x = a2_path_linx;
+    cmd_vel_a2.angular.z = a2_path_angz;
+    
+    /* Changed the a1 speed to match with a2 */
+    cmd_vel_a1.linear.x = 20;
+    cmd_vel_a1.angular.z = a1_path_angz;
+
+    vel_a1_pub.publish(cmd_vel_a1);
+    vel_a2_pub.publish(cmd_vel_a2);
 
   }
 }

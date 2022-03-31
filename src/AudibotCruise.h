@@ -12,6 +12,10 @@
 #include <sensor_msgs/Image.h>
 #include <string>
 #include <math.h>
+#include <opencv2/opencv.hpp>
+#include <cv_bridge/cv_bridge.h>
+
+#define DEBUG 0
 
 // Namespace matches ROS package name
 namespace audibot_final_project{
@@ -32,6 +36,7 @@ class final_project
   void Level_1(void);
   void Level_2(void);
   void Level_3(void);
+  void Level_4(void);
   ros::Subscriber gps_a1_sub;
   ros::Subscriber gps_a2_sub;
   ros::Subscriber vel_path_a1;
