@@ -54,8 +54,8 @@
     <node pkg="audibot_final_project" type="audibot_final_project" name="audibot_final_project" output="screen" >
       <param name="level" type="string" value="pcl" />
     </node>
-    <node pkg="rviz" type="rviz" name="rviz" args="-d $(find audibot_final_project)/rviz/simulation.rviz" />
-    <param name="robot_description" textfile="$(find audibot_final_project)/urdf/audibot_description.urdf" />
+    <!-- <node pkg="rviz" type="rviz" name="rviz" args="-d $(find audibot_final_project)/rviz/simulation.rviz" />
+    <param name="robot_description" textfile="$(find audibot_final_project)/urdf/audibot_description.urdf" /> -->
   </group>
 
 </launch>

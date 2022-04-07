@@ -32,13 +32,17 @@ double laser_max_distance = 0;
 double laser_angle_at_max_distance = 0;
 double lidar_distance = 0;
 
-double lower_h = 110;
+double lower_h = 100;
 double lower_s = 150;
-double lower_v = 150;
+double lower_v = 0;
 
-double upper_h = 110;
-double upper_s = 150;
-double upper_v = 150;
+double upper_h = 140;
+double upper_s = 255;
+double upper_v = 255;
+
+double largest_contour_area = 0;
+double min_target_area = 1500;
+double max_target_area = 2000;
 
 std::string param;
 int level;
@@ -93,7 +97,14 @@ namespace audibot_final_project {
   #if DEBUG
     cv::namedWindow("Raw", cv::WINDOW_NORMAL);
     cv::namedWindow("Blue", cv::WINDOW_NORMAL);
+    cv::namedWindow("Test_L", cv::WINDOW_NORMAL);
+    cv::namedWindow("Test_R", cv::WINDOW_NORMAL);
   #endif
+    // cv::namedWindow("Test_Project", cv::WINDOW_NORMAL);
+    // cv::namedWindow("Blue", cv::WINDOW_NORMAL);
+    // cv::namedWindow("Dilated", cv::WINDOW_NORMAL);
+    // cv::namedWindow("Eroded", cv::WINDOW_NORMAL);
+    // cv::namedWindow("Contours", cv::WINDOW_NORMAL);
   }
   
   void final_project::recvFix_a1(const sensor_msgs::NavSatFixConstPtr& msg)
@@ -143,16 +154,89 @@ namespace audibot_final_project {
 
   void final_project::recvCameraImage_a1(const sensor_msgs::ImageConstPtr& msg)
   {
-    cv_bridge::CvImagePtr cv_ptr = cv_bridge::toCvCopy(msg, sensor_msgs::image_encodings::BGR8);
-    cv::Mat raw_img = cv_ptr->image;
-    cv::Mat raw_hsv, img_mask;
-    cv::cvtColor(raw_img, raw_hsv, CV_BGR2HSV);
-    cv::inRange(raw_hsv, cv::Scalar(lower_h, lower_s, lower_v), cv::Scalar(upper_h, upper_s, upper_v), img_mask);
+    cv::Mat raw_img, mask_hsv, blue_hsv, erode_hsv, dilate_hsv;
+    cv::Mat mask_img_left, mask_img_right, mask_img_proj;
+    cv_bridge::CvImagePtr cv_ptr;
+
+    std::vector<std::vector<cv::Point>> contours;
+    cv::RNG rng(12345);
+
+
+
+    cv_ptr = cv_bridge::toCvCopy(msg, sensor_msgs::image_encodings::BGR8);
+    raw_img = cv_ptr->image;
+
+    int raw_img_height = raw_img.size().height;
+    int raw_img_width = raw_img.size().width;
+
+    // ROS_INFO("Image Rows: %d", raw_img.rows);
+    // ROS_INFO("Image Cols: %d", raw_img.cols);
+    // ROS_INFO("Image Size_H: %d", raw_img_height);
+    // ROS_INFO("Image Size_W: %d", raw_img_width);
+
+
+    // cv::Rect left_img_mask_roi(raw_img_width/2, 0, raw_img_width/2, raw_img_height/2);
+    // mask_img_left = raw_img(left_img_mask_roi);
+
+    // cv::Rect right_img_mask_roi(0, 0, raw_img_width/2, raw_img_height/2);
+    // mask_img_right = raw_img(right_img_mask_roi);
+
+    cv::Rect top_img_mask_roi(raw_img_width/5, 0, raw_img_width/2, 300);
+    mask_img_proj = raw_img(top_img_mask_roi);
+
+    
+
+    cv::cvtColor(mask_img_proj, mask_hsv, CV_BGR2HSV);
+    cv::inRange(mask_hsv, cv::Scalar(lower_h, lower_s, lower_v), cv::Scalar(upper_h, upper_s, upper_v), blue_hsv);
+
+    cv::Mat dilate_kernel = cv::getStructuringElement(cv::MORPH_RECT, cv::Size(7, 7), cv::Point(-1, -1));
+    cv::dilate(blue_hsv, dilate_hsv, dilate_kernel, cv::Point(-1,-1), 1);
+
+    cv::Mat erode_kernel = cv::getStructuringElement(cv::MORPH_RECT, cv::Size(1, 1), cv::Point(-1, -1));
+    cv::erode(dilate_hsv, erode_hsv, erode_kernel, cv::Point(-1,-1), 1);
+
+    cv::findContours(erode_hsv, contours, cv::RETR_TREE, cv::CHAIN_APPROX_SIMPLE);
+    ROS_INFO("Contours Size: % d", contours.size());
+
+
+    std::vector<std::vector<cv::Point>> contours_poly(contours.size());
+    std::vector<cv::Rect> boundRect(contours.size());
+    std::vector<cv::Point2f> centers(contours.size());
+    std::vector<float> radius(contours.size());
+
+    for(int i = 0; i < contours.size(); i++)
+    {
+        cv::approxPolyDP(contours[i], contours_poly[i], 3, true);
+        boundRect[i] = cv::boundingRect(contours_poly[i]);
+        cv::minEnclosingCircle(contours_poly[i], centers[i], radius[i]);
+        largest_contour_area = boundRect[0].area();
+    }
+
+    cv::Mat contours_img = cv::Mat::zeros(blue_hsv.size(), CV_8UC3);
+
+    for(int i = 0; i < contours.size(); i++)
+    {
+        cv::Scalar color = cv::Scalar(rng.uniform(0, 256), rng.uniform(0,256), rng.uniform(0,256));
+        cv::drawContours(contours_img, contours_poly, i, color);
+        cv::rectangle(contours_img, boundRect[i].tl(), boundRect[i].br(), color, 2);
+        cv::circle(contours_img, centers[i], (int)radius[i], color, 2);
+    }
+   
+
+
+    //  cv::imshow("Test_Project", mask_img_proj);
+    //  cv::imshow("Blue", blue_hsv);
+    //  cv::imshow("Dilated", dilate_hsv); 
+    //  cv::imshow("Eroded", erode_hsv);
+    //  cv::imshow("Contours", contours_img);
+     cv::waitKey(1);
 
   #if DEBUG
     cv::imshow("Raw", raw_img);
-    cv::imshow("Blue", img_mask);
-    cv::waitKey(1);
+    cv::imshow("Blue", blue_hsv);
+    cv::imshow("Test_L", mask_img_left);
+    cv::imshow("Test_R", mask_img_right);
+    cv::waitKey(2);
   #endif
 
   }
@@ -186,7 +270,7 @@ namespace audibot_final_project {
     cmd_vel_a2.linear.x = a2_path_linx;
     cmd_vel_a2.angular.z = a2_path_angz;
 
-    /* Implement PID controller for linear.x to prevent collision */
+    /* TODO: Implement PID controller for linear.x to prevent collision */
     dist_a1_a2 = sqrt(((a2_x - a1_x)*(a2_x - a1_x)) + ((a2_y - a1_y)*(a2_y - a1_y)) + ((a2_z - a1_z)*(a2_z - a1_z)));
     
     ROS_INFO("Controller Distance: %f", dist_a1_a2);
@@ -252,6 +336,28 @@ namespace audibot_final_project {
 
   void final_project::Level_3(void)
   {
+    /* Values of a2 will be same as audibot_path_following package */
+    cmd_vel_a2.linear.x = a2_path_linx;
+    cmd_vel_a2.angular.z = a2_path_angz;
+
+    /* TODO: Implement PID controller for linear.x to prevent collision */
+    
+    ROS_INFO("Largest Contour Area: %f", largest_contour_area);
+
+    if (largest_contour_area > min_target_area && largest_contour_area < max_target_area)
+    {
+      cmd_vel_a1.linear.x = 19;
+      cmd_vel_a1.angular.z = a1_path_angz;
+    }
+    else{
+      cmd_vel_a1.linear.x = a1_path_linx;
+      cmd_vel_a1.angular.z = a1_path_angz;
+      // ROS_INFO("a1 Linear Vel : %f", a1_path_linx);
+      // ROS_INFO("a1 Angular Vel: %f", a1_path_angz);
+    }
+
+    vel_a1_pub.publish(cmd_vel_a1);
+    vel_a2_pub.publish(cmd_vel_a2);
 
   }
 
