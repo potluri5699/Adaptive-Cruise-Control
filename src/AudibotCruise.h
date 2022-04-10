@@ -28,6 +28,7 @@ class final_project
 
   private:
   void algoTimerCallback(const ros::TimerEvent& event);
+  void a2TimerCallback(const ros::TimerEvent& event);
   void recvFix_a1(const sensor_msgs::NavSatFixConstPtr& msg);
   void recvFix_a2(const sensor_msgs::NavSatFixConstPtr& msg);
   void recvPathVel_a1(const geometry_msgs::TwistConstPtr& msg);
@@ -48,6 +49,7 @@ class final_project
   ros::Publisher vel_a2_pub;
   ros::Publisher cloud_a1_pub;
   ros::Timer algoTimer;
+  ros::Timer a2Timer;
 };
 
 }

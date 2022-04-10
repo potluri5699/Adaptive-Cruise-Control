@@ -15,8 +15,12 @@ double a2_path_linx = 0;
 
 double dist_a1_a2 = 0;
 
-const double target_dist_level_1 = 22;
-const double target_dist_level_2 = 19;
+const double target_dist_level_1_max = 22;
+const double target_dist_level_1_min = 12;
+
+const double target_dist_level_2_max = 19;
+const double target_dist_level_2_min = 12;
+
 
 const int laser_readings = 360;
 
@@ -41,11 +45,12 @@ double upper_s = 255;
 double upper_v = 255;
 
 double largest_contour_area = 0;
-double min_target_area = 1500;
-double max_target_area = 2000;
+double target_min_contour_area = 1500;
+double target_max_contour_area = 2100;
 
 std::string param;
 int level;
+unsigned int a2TimerCount = 0;
 
 // Namespace matches ROS package name
 namespace audibot_final_project {
@@ -65,6 +70,7 @@ namespace audibot_final_project {
     cloud_a1_pub = n.advertise<sensor_msgs::PointCloud2>("/a1/point_cloud", 1);
 
     algoTimer = n.createTimer(ros::Duration(0.01), &final_project::algoTimerCallback, this);
+    a2Timer = n.createTimer(ros::Duration(0.01), &final_project::a2TimerCallback, this);
 
 
     pn.getParam("level", param);
@@ -96,15 +102,15 @@ namespace audibot_final_project {
     }
   #if DEBUG
     cv::namedWindow("Raw", cv::WINDOW_NORMAL);
+    // cv::namedWindow("Test_L", cv::WINDOW_NORMAL);
+    // cv::namedWindow("Test_R", cv::WINDOW_NORMAL);
+    cv::namedWindow("Test_ROI", cv::WINDOW_NORMAL);
     cv::namedWindow("Blue", cv::WINDOW_NORMAL);
-    cv::namedWindow("Test_L", cv::WINDOW_NORMAL);
-    cv::namedWindow("Test_R", cv::WINDOW_NORMAL);
+    cv::namedWindow("Dilated", cv::WINDOW_NORMAL);
+    cv::namedWindow("Eroded", cv::WINDOW_NORMAL);
+    cv::namedWindow("Contours", cv::WINDOW_NORMAL);
   #endif
-    // cv::namedWindow("Test_Project", cv::WINDOW_NORMAL);
-    // cv::namedWindow("Blue", cv::WINDOW_NORMAL);
-    // cv::namedWindow("Dilated", cv::WINDOW_NORMAL);
-    // cv::namedWindow("Eroded", cv::WINDOW_NORMAL);
-    // cv::namedWindow("Contours", cv::WINDOW_NORMAL);
+ 
   }
   
   void final_project::recvFix_a1(const sensor_msgs::NavSatFixConstPtr& msg)
@@ -196,7 +202,7 @@ namespace audibot_final_project {
     cv::erode(dilate_hsv, erode_hsv, erode_kernel, cv::Point(-1,-1), 1);
 
     cv::findContours(erode_hsv, contours, cv::RETR_TREE, cv::CHAIN_APPROX_SIMPLE);
-    ROS_INFO("Contours Size: % d", contours.size());
+    // ROS_INFO("Contours Size: % d", contours.size());
 
 
     std::vector<std::vector<cv::Point>> contours_poly(contours.size());
@@ -223,19 +229,15 @@ namespace audibot_final_project {
     }
    
 
-
-    //  cv::imshow("Test_Project", mask_img_proj);
-    //  cv::imshow("Blue", blue_hsv);
-    //  cv::imshow("Dilated", dilate_hsv); 
-    //  cv::imshow("Eroded", erode_hsv);
-    //  cv::imshow("Contours", contours_img);
-     cv::waitKey(1);
-
   #if DEBUG
-    cv::imshow("Raw", raw_img);
-    cv::imshow("Blue", blue_hsv);
-    cv::imshow("Test_L", mask_img_left);
-    cv::imshow("Test_R", mask_img_right);
+     cv::imshow("Raw", raw_img);
+     cv::imshow("Project_ROI", mask_img_proj);
+     cv::imshow("Blue", blue_hsv);
+     cv::imshow("Dilated", dilate_hsv); 
+     cv::imshow("Eroded", erode_hsv);
+     cv::imshow("Contours", contours_img);
+    // cv::imshow("Test_L", mask_img_left);
+    // cv::imshow("Test_R", mask_img_right);
     cv::waitKey(2);
   #endif
 
@@ -264,22 +266,132 @@ namespace audibot_final_project {
     }
   }
 
+  void final_project::a2TimerCallback(const ros::TimerEvent& event)
+  {
+    if(level == 4)
+    {
+      /* Values of a2 will be same as audibot_path_following package */
+      cmd_vel_a2.linear.x = a2_path_linx;
+      cmd_vel_a2.angular.z = a2_path_angz;
+    }
+    else
+    {
+      /* Implement a timer counter to vary the a2 values*/  
+      if(a2TimerCount >= 0 && a2TimerCount < 18000) /* 3 minutes */
+      {
+        if(a2TimerCount >= 0 && a2TimerCount < 3000) /* 30 seconds */
+        {
+          cmd_vel_a2.linear.x = 15;
+          cmd_vel_a2.angular.z = a2_path_angz;
+        }
+        else if(a2TimerCount >= 3000 && a2TimerCount < 6000)  /* 60 seconds */
+        {
+          cmd_vel_a2.linear.x = 18;
+          cmd_vel_a2.angular.z = a2_path_angz;    
+        }
+        else if(a2TimerCount >= 6000 && a2TimerCount < 10000)  /* 100 seconds */
+        { 
+          cmd_vel_a2.linear.x = 22;
+          cmd_vel_a2.angular.z = a2_path_angz;
+        }
+        else if(a2TimerCount >= 10000 && a2TimerCount < 14000)  /* 140 seconds */
+        {
+          cmd_vel_a2.linear.x = 18;
+          cmd_vel_a2.angular.z = a2_path_angz;  
+        }
+        else  /* 180 seconds */
+        {
+          cmd_vel_a2.linear.x = 21;
+          cmd_vel_a2.angular.z = a2_path_angz;  
+        }
+#if DEBUG
+        if(a2TimerCount >= 0 && a2TimerCount < 4000)
+        {
+          cmd_vel_a2.linear.x = a2_path_linx;
+          cmd_vel_a2.angular.z = a2_path_angz;
+        }
+        else if(a2TimerCount >= 4000 && a2TimerCount < 8000) 
+        {
+          cmd_vel_a2.linear.x = 24;
+          cmd_vel_a2.angular.z = a2_path_angz;    
+        }
+        else if(a2TimerCount >= 8000 && a2TimerCount < 11000)  
+        { 
+          cmd_vel_a2.linear.x = 21;
+          cmd_vel_a2.angular.z = a2_path_angz;
+        }
+        else if(a2TimerCount >= 11000 && a2TimerCount < 14000) 
+        {
+          cmd_vel_a2.linear.x = 18;
+          cmd_vel_a2.angular.z = a2_path_angz;  
+        }
+        else  
+        {
+          cmd_vel_a2.linear.x = 16;
+          cmd_vel_a2.angular.z = a2_path_angz;  
+        }
+#endif
+      }
+      else if(a2TimerCount >= 18000 && a2TimerCount < 36000) /* 6 minutes */
+      {
+        cmd_vel_a2.linear.x = 18;
+        cmd_vel_a2.angular.z = a2_path_angz;
+      }
+      else if(a2TimerCount >= 36000 && a2TimerCount < 54000) /* 9 minutes */
+      {
+        cmd_vel_a2.linear.x = 16;
+        cmd_vel_a2.angular.z = a2_path_angz;
+      }
+      else if(a2TimerCount >= 54000 && a2TimerCount < 78000) /* 13 minutes */
+      {
+        cmd_vel_a2.linear.x = 19;
+        cmd_vel_a2.angular.z = a2_path_angz;
+      }
+      else if(a2TimerCount >= 78000 && a2TimerCount < 102000)  /* 17 minutes */
+      {
+        cmd_vel_a2.linear.x = 24;
+        cmd_vel_a2.angular.z = a2_path_angz;
+      }
+      else if(a2TimerCount >= 102000 && a2TimerCount < 120000)  /* 20 minutes */
+      {
+        cmd_vel_a2.linear.x = 20;
+        cmd_vel_a2.angular.z = a2_path_angz;  
+        a2TimerCount = 0;
+      }
+      else /* Never */
+      {
+        cmd_vel_a2.linear.x = a2_path_linx;
+        cmd_vel_a2.angular.z = a2_path_angz;
+      }
+
+      a2TimerCount++;
+    }
+
+    vel_a2_pub.publish(cmd_vel_a2);
+  }
+
   void final_project::Level_1(void)
   {
     /* Values of a2 will be same as audibot_path_following package */
-    cmd_vel_a2.linear.x = a2_path_linx;
-    cmd_vel_a2.angular.z = a2_path_angz;
+    // cmd_vel_a2.linear.x = a2_path_linx;
+    // cmd_vel_a2.angular.z = a2_path_angz;
 
     /* TODO: Implement PID controller for linear.x to prevent collision */
     dist_a1_a2 = sqrt(((a2_x - a1_x)*(a2_x - a1_x)) + ((a2_y - a1_y)*(a2_y - a1_y)) + ((a2_z - a1_z)*(a2_z - a1_z)));
     
     ROS_INFO("Controller Distance: %f", dist_a1_a2);
 
-    if (dist_a1_a2 < target_dist_level_1){
-      cmd_vel_a1.linear.x = 19;
+    if (dist_a1_a2 < target_dist_level_1_max && dist_a1_a2 > target_dist_level_1_min){
+      cmd_vel_a1.linear.x = 16;
       cmd_vel_a1.angular.z = a1_path_angz;
     }
-    else{
+    else if (dist_a1_a2 < target_dist_level_1_min)
+    {
+      cmd_vel_a1.linear.x = 0;
+      cmd_vel_a1.angular.z = 0;
+    }
+    else
+    {
       cmd_vel_a1.linear.x = a1_path_linx;
       cmd_vel_a1.angular.z = a1_path_angz;
       // ROS_INFO("a1 Linear Vel : %f", a1_path_linx);
@@ -287,7 +399,7 @@ namespace audibot_final_project {
     }
 
     vel_a1_pub.publish(cmd_vel_a1);
-    vel_a2_pub.publish(cmd_vel_a2);
+    // vel_a2_pub.publish(cmd_vel_a2);
 
   }
 
@@ -315,15 +427,21 @@ namespace audibot_final_project {
 
     // ROS_INFO("Laser scan at -45, 0, 45: (%f, %f, %f)", laser_ranges[0], laser_ranges[180], laser_ranges[359]);
     
-    /* Speed control algorithm */
-    cmd_vel_a2.linear.x = a2_path_linx;
-    cmd_vel_a2.angular.z = a2_path_angz;
+    /* Values of a2 will be same as audibot_path_following package */
+    // cmd_vel_a2.linear.x = a2_path_linx;
+    // cmd_vel_a2.angular.z = a2_path_angz;
 
-    if(lidar_distance < target_dist_level_2){
-      cmd_vel_a1.linear.x = 19;
+    if(lidar_distance < target_dist_level_2_max && lidar_distance > target_dist_level_2_min){
+      cmd_vel_a1.linear.x = 16;
       cmd_vel_a1.angular.z = a1_path_angz;
     }
-    else{
+    else if(lidar_distance < target_dist_level_2_min)
+    {
+      cmd_vel_a1.linear.x = 0;
+      cmd_vel_a1.angular.z = 0;
+    }
+    else
+    {
       cmd_vel_a1.linear.x = a1_path_linx;
       cmd_vel_a1.angular.z = a1_path_angz;
       // ROS_INFO("a1 Linear Vel : %f", a1_path_linx);
@@ -331,33 +449,39 @@ namespace audibot_final_project {
     }
 
     vel_a1_pub.publish(cmd_vel_a1);
-    vel_a2_pub.publish(cmd_vel_a2);
+    // vel_a2_pub.publish(cmd_vel_a2);
   }
 
   void final_project::Level_3(void)
   {
     /* Values of a2 will be same as audibot_path_following package */
-    cmd_vel_a2.linear.x = a2_path_linx;
-    cmd_vel_a2.angular.z = a2_path_angz;
+    // cmd_vel_a2.linear.x = a2_path_linx;
+    // cmd_vel_a2.angular.z = a2_path_angz;
 
     /* TODO: Implement PID controller for linear.x to prevent collision */
     
     ROS_INFO("Largest Contour Area: %f", largest_contour_area);
 
-    if (largest_contour_area > min_target_area && largest_contour_area < max_target_area)
+    if (largest_contour_area > target_min_contour_area && largest_contour_area < target_max_contour_area)
     {
-      cmd_vel_a1.linear.x = 19;
+      cmd_vel_a1.linear.x = 16;
       cmd_vel_a1.angular.z = a1_path_angz;
     }
-    else{
+    else if(largest_contour_area > target_max_contour_area)
+    {
+      cmd_vel_a1.linear.x = 0;
+      cmd_vel_a1.angular.z = 0;
+    }
+    else
+    {
       cmd_vel_a1.linear.x = a1_path_linx;
       cmd_vel_a1.angular.z = a1_path_angz;
       // ROS_INFO("a1 Linear Vel : %f", a1_path_linx);
-      // ROS_INFO("a1 Angular Vel: %f", a1_path_angz);
+      // ROS_INFO("a1 Angular Vel: %f", a1_path_angz); 
     }
 
     vel_a1_pub.publish(cmd_vel_a1);
-    vel_a2_pub.publish(cmd_vel_a2);
+    // vel_a2_pub.publish(cmd_vel_a2);
 
   }
 
