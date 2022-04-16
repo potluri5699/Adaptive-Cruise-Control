@@ -28,7 +28,10 @@ const int laser_readings = 360;
 geometry_msgs::Twist cmd_vel_a1, cmd_vel_a2;
 
 laser_geometry::LaserProjection projector;
-sensor_msgs::PointCloud2 cloud;
+sensor_msgs::PointCloud2 cloud_msg;
+
+sensor_msgs::PointCloud2 merged_cloud;
+audibot_final_project::TrackedObjectArray bboxes;
 
 double laser_ranges[laser_readings];
 double laser_angles[laser_readings];
@@ -56,7 +59,8 @@ unsigned int a2TimerCount = 0;
 namespace audibot_final_project {
   
   // Constructor with global and private node handle arguments
-  final_project::final_project(ros::NodeHandle n, ros::NodeHandle pn)
+  final_project::final_project(ros::NodeHandle n, ros::NodeHandle pn):
+    kd_tree(new pcl::search::KdTree<pcl::PointXYZ>)
   {
     gps_a1_sub =  n.subscribe("/a1/gps/fix", 1, &final_project::recvFix_a1, this);
     gps_a2_sub =  n.subscribe("/a2/gps/fix", 1, &final_project::recvFix_a2, this);
@@ -68,9 +72,13 @@ namespace audibot_final_project {
     vel_a1_pub = n.advertise<geometry_msgs::Twist>("/a1/cmd_vel", 1); 
     vel_a2_pub = n.advertise<geometry_msgs::Twist>("/a2/cmd_vel", 1);
     cloud_a1_pub = n.advertise<sensor_msgs::PointCloud2>("/a1/point_cloud", 1);
+    merged_cloud_a1_pub = n.advertise<sensor_msgs::PointCloud2>("a1_merged_cloud", 1);
+    bboxes_pub = n.advertise<audibot_final_project::TrackedObjectArray>("a2_object", 1);
 
     algoTimer = n.createTimer(ros::Duration(0.01), &final_project::algoTimerCallback, this);
     a2Timer = n.createTimer(ros::Duration(0.01), &final_project::a2TimerCallback, this);
+
+
 
 
     pn.getParam("level", param);
@@ -154,8 +162,7 @@ namespace audibot_final_project {
       laser_angles[i] = msg->angle_min + (i * msg->angle_increment);
     }
 
-    projector.projectLaser(*msg, cloud);
-    cloud_a1_pub.publish(cloud);
+    projector.projectLaser(*msg, cloud_msg);
   }
 
   void final_project::recvCameraImage_a1(const sensor_msgs::ImageConstPtr& msg)
@@ -304,7 +311,7 @@ namespace audibot_final_project {
           cmd_vel_a2.linear.x = 21;
           cmd_vel_a2.angular.z = a2_path_angz;  
         }
-#if DEBUG
+#if 0
         if(a2TimerCount >= 0 && a2TimerCount < 4000)
         {
           cmd_vel_a2.linear.x = a2_path_linx;
@@ -498,5 +505,129 @@ namespace audibot_final_project {
     vel_a1_pub.publish(cmd_vel_a1);
     vel_a2_pub.publish(cmd_vel_a2);
 
+    cloud_a1_pub.publish(cloud_msg);
+
+    pcl::PointCloud<pcl::PointXYZ>::Ptr input_cloud(new pcl::PointCloud<pcl::PointXYZ>);
+    pcl::fromROSMsg(cloud_msg, *input_cloud);
+
+    pcl::PointCloud<pcl::PointXYZ>::Ptr filtered_cloud(new pcl::PointCloud<pcl::PointXYZ>);
+    passthroughFilter(input_cloud, filtered_cloud);
+    voxelFilter(filtered_cloud, filtered_cloud);
+
+    // pcl::PointCloud<pcl::PointXYZ>::Ptr no_ground_cloud(new pcl::PointCloud<pcl::PointXYZ>);
+    // normalsFilter(filtered_cloud, no_ground_cloud);
+
+    std::vector<pcl::PointCloud<pcl::PointXYZ>::Ptr> cluster_clouds;
+    euclideanClustering(filtered_cloud, cluster_clouds);
+
+    generateBoundingBoxes(cluster_clouds);
+    bboxes.header = pcl_conversions::fromPCL(filtered_cloud->header);
+
+    mergeClusters(cluster_clouds);
+    merged_cloud.header = pcl_conversions::fromPCL(filtered_cloud->header);
+
+    merged_cloud_a1_pub.publish(merged_cloud);
+    bboxes_pub.publish(bboxes);
+  }
+
+  void final_project::passthroughFilter(const pcl::PointCloud<pcl::PointXYZ>::Ptr& cloud_in, 
+                                    pcl::PointCloud<pcl::PointXYZ>::Ptr& cloud_out)
+  {
+    pcl::IndicesPtr roi_indices(new std::vector <int>);
+    pcl::PassThrough<pcl::PointXYZ> pass;
+
+    // Give passthrough filter the pointer to the cloud we want to filter
+    pass.setInputCloud(cloud_in);
+
+    // Ask passthrough filter to extract points in a given X range
+    pass.setFilterFieldName("x");
+    pass.setFilterLimits(0, 100);
+    pass.filter(*roi_indices);
+
+    // Ask passthrough filter to extract points in a given Y range
+    pass.setIndices(roi_indices);
+    pass.setFilterFieldName("y");
+    pass.setFilterLimits(-10, 10);
+    pass.filter(*roi_indices);
+
+    // Ask passthrough filter to extract points in a given Z range
+    pass.setIndices(roi_indices);
+    pass.setFilterFieldName("z");
+    pass.setFilterLimits(-2, 3);
+    pass.filter(*cloud_out);
+  
+  }
+
+  void final_project::voxelFilter(const pcl::PointCloud<pcl::PointXYZ>::Ptr& cloud_in, 
+                              pcl::PointCloud<pcl::PointXYZ>::Ptr& cloud_out)
+  {
+    pcl::VoxelGrid<pcl::PointXYZ> downsample;
+    downsample.setInputCloud(cloud_out);
+    downsample.setLeafSize(0.2, 0.2, 0.2);
+    downsample.filter(*cloud_out);
+  }
+
+  void final_project::euclideanClustering(const pcl::PointCloud<pcl::PointXYZ>::Ptr& cloud_in,
+                                      std::vector<pcl::PointCloud<pcl::PointXYZ>::Ptr>& cluster_clouds)
+  {
+    std::vector<pcl::PointIndices> cluster_indices;
+    pcl::EuclideanClusterExtraction<pcl::PointXYZ> ec;
+
+    ec.setClusterTolerance(1); /* ClusterTolerance distance between two closest cluster points */
+    ec.setMinClusterSize(2);   /* ClusterSize is number of cluser points required to produce a bounding box */
+    ec.setMaxClusterSize(5000);
+    kd_tree->setInputCloud(cloud_in);
+    ec.setSearchMethod(kd_tree);
+    ec.setInputCloud(cloud_in);
+    ec.extract(cluster_indices);
+
+    for (auto indices : cluster_indices) {
+      pcl::PointCloud<pcl::PointXYZ>::Ptr cluster(new pcl::PointCloud<pcl::PointXYZ>);
+      pcl::copyPointCloud(*cloud_in, indices, *cluster);
+      cluster->width = cluster->points.size();
+      cluster->height = 1;
+      cluster->is_dense = true;
+      cluster_clouds.push_back(cluster);
+    }
+  }
+  
+  void final_project::mergeClusters(const std::vector<pcl::PointCloud<pcl::PointXYZ>::Ptr>& cluster_clouds)
+  {
+    pcl::PointCloud<pcl::PointXYZ>::Ptr merged_pcl_cloud(new pcl::PointCloud<pcl::PointXYZ>);
+
+    for (auto& cluster : cluster_clouds) {
+      merged_pcl_cloud->points.insert(merged_pcl_cloud->points.begin(), cluster->points.begin(), cluster->points.end());
+    }
+    merged_pcl_cloud->width = merged_pcl_cloud->points.size();
+    merged_pcl_cloud->height = 1;
+    merged_pcl_cloud->is_dense = true;
+
+    pcl::toROSMsg(*merged_pcl_cloud, merged_cloud);  
+  }
+
+  void final_project::generateBoundingBoxes(const std::vector<pcl::PointCloud<pcl::PointXYZ>::Ptr>& cluster_clouds)
+  {
+    pcl::PointXYZ min_point, max_point;
+    
+    bboxes.objects.clear();
+    int bbox_id = 0;
+
+    for (auto& cluster : cluster_clouds) {
+      pcl::getMinMax3D(*cluster, min_point, max_point);
+      audibot_final_project::TrackedObject box;
+      box.header = bboxes.header;
+
+      box.spawn_time = ros::Time::now();
+
+      box.bounding_box_scale.x = max_point.x - min_point.x;
+      box.bounding_box_scale.y = max_point.y - min_point.y;
+      box.bounding_box_scale.z = max_point.z - min_point.z;
+      box.pose.position.x = 0.5 * (max_point.x + min_point.x);
+      box.pose.position.y = 0.5 * (max_point.y + min_point.y);
+      box.pose.position.z = 0.5 * (max_point.z + min_point.z);
+      box.pose.orientation.w = 1.0;
+      box.id = bbox_id++;
+      bboxes.objects.push_back(box);
+    }
   }
 }

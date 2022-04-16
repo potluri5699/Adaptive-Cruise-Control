@@ -1,6 +1,11 @@
 cmake_minimum_required(VERSION 2.8.3)
 project(audibot_final_project)
 
+add_message_files(
+  FILES
+  TrackedObject.msg
+  TrackedObjectArray.msg
+)
 find_package(catkin REQUIRED COMPONENTS
   roscpp
   tf
@@ -10,7 +15,16 @@ find_package(catkin REQUIRED COMPONENTS
   geometry_msgs
   laser_geometry
   cv_bridge
+  pcl_ros
+  message_generation
 )
+
+generate_messages(
+  DEPENDENCIES
+  std_msgs
+  geometry_msgs
+)
+
 find_package(OpenCV REQUIRED)
 
 catkin_package()

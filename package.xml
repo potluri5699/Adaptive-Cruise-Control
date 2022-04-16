@@ -18,6 +18,9 @@
   <depend>geometry_msgs</depend>
   <depend>visualization_msgs</depend>
   <depend>cv_bridge</depend>
+  <depend>pcl_ros</depend>
+  <depend>message_generation</depend>
+  <depend>message_runtime</depend>
 
 
   <export>
