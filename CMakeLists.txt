@@ -13,6 +13,8 @@ find_package(catkin REQUIRED COMPONENTS
   sensor_msgs
   std_msgs
   geometry_msgs
+  tf2_ros
+  tf2_geometry_msgs
   laser_geometry
   cv_bridge
   pcl_ros

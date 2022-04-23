@@ -24,14 +24,15 @@ const double target_dist_level_2_min = 12;
 
 const int laser_readings = 360;
 
-
+std::string param;
 geometry_msgs::Twist cmd_vel_a1, cmd_vel_a2;
-
 laser_geometry::LaserProjection projector;
-sensor_msgs::PointCloud2 cloud_msg;
-
-sensor_msgs::PointCloud2 merged_cloud;
-audibot_final_project::TrackedObjectArray bboxes;
+sensor_msgs::PointCloud2 cloud_msg, merged_cloud;
+audibot_final_project::TrackedObjectArray bboxes, dummy_boxes;
+std_msgs::UInt32  box_id_1, box_id_2;
+std_msgs::Float64 box_x_1, box_x_2;
+std_msgs::Float64 box_y_1, box_y_2;
+std_msgs::Float64 box_z_1, box_z_2;
 
 double laser_ranges[laser_readings];
 double laser_angles[laser_readings];
@@ -51,9 +52,9 @@ double largest_contour_area = 0;
 double target_min_contour_area = 1500;
 double target_max_contour_area = 2100;
 
-std::string param;
-int level;
 unsigned int a2TimerCount = 0;
+int level;
+
 
 // Namespace matches ROS package name
 namespace audibot_final_project {
@@ -102,7 +103,7 @@ namespace audibot_final_project {
     else if(param == "pcl")
     {
       level = 4; /* Testing PCL data */
-      ROS_INFO("Test PCL data");
+      ROS_INFO("Testing PCL data");
     }
     else
     {
@@ -264,7 +265,7 @@ namespace audibot_final_project {
         final_project::Level_3();
         break;
       case 4:
-        final_project::Level_4();
+        final_project::PCL();
         break;
       default:
         cmd_vel_a1.linear.x = 0;
@@ -492,7 +493,7 @@ namespace audibot_final_project {
 
   }
 
-  void final_project::Level_4(void)
+  void final_project::PCL(void)
   {
     /* Values of a2 will be same as audibot_path_following package */
     cmd_vel_a2.linear.x = a2_path_linx;
@@ -514,11 +515,19 @@ namespace audibot_final_project {
     passthroughFilter(input_cloud, filtered_cloud);
     voxelFilter(filtered_cloud, filtered_cloud);
 
-    // pcl::PointCloud<pcl::PointXYZ>::Ptr no_ground_cloud(new pcl::PointCloud<pcl::PointXYZ>);
-    // normalsFilter(filtered_cloud, no_ground_cloud);
+    pcl::PointCloud<pcl::PointXYZ>::Ptr no_ground_cloud(new pcl::PointCloud<pcl::PointXYZ>);
+    normalsFilter(filtered_cloud, no_ground_cloud);
+
+    // Return from function here if there are no points left after filtering out the ground points
+    if (no_ground_cloud->size() == 0)
+    {
+      dummy_boxes.header = pcl_conversions::fromPCL(no_ground_cloud->header);
+      bboxes_pub.publish(dummy_boxes);
+      return;
+    }
 
     std::vector<pcl::PointCloud<pcl::PointXYZ>::Ptr> cluster_clouds;
-    euclideanClustering(filtered_cloud, cluster_clouds);
+    euclideanClustering(no_ground_cloud, cluster_clouds);
 
     generateBoundingBoxes(cluster_clouds);
     bboxes.header = pcl_conversions::fromPCL(filtered_cloud->header);
@@ -567,6 +576,71 @@ namespace audibot_final_project {
     downsample.filter(*cloud_out);
   }
 
+  void final_project::normalsFilter(const pcl::PointCloud<pcl::PointXYZ>::Ptr& cloud_in, 
+                                pcl::PointCloud<pcl::PointXYZ>::Ptr& cloud_out)
+  {
+    // Compute normal vectors for the incoming point cloud
+    pcl::PointCloud <pcl::Normal>::Ptr cloud_normals(new pcl::PointCloud <pcl::Normal>);
+    pcl::NormalEstimation<pcl::PointXYZ, pcl::Normal> normal_estimator;
+    kd_tree->setInputCloud(cloud_in);
+    normal_estimator.setSearchMethod(kd_tree);
+    normal_estimator.setInputCloud(cloud_in);
+    normal_estimator.setKSearch(50);
+    normal_estimator.compute(*cloud_normals);
+
+    // Filter out near-vertical normals
+    pcl::PointIndices non_vertical_normals;
+    
+      for (int i = 0; i < cloud_normals->points.size(); i++) {
+      double mag_x = cloud_normals->points[i].normal_x * cloud_normals->points[i].normal_x;
+      double mag_y = cloud_normals->points[i].normal_y * cloud_normals->points[i].normal_y;
+      double mag_z = cloud_normals->points[i].normal_z * cloud_normals->points[i].normal_z;
+       
+      double vertical_angle = acos(cloud_normals->points[i].normal_z);
+
+      if((vertical_angle > (30 * M_PI/180)) && (vertical_angle < (150 * M_PI/180)))
+      {
+        non_vertical_normals.indices.push_back(i);
+      }
+
+    }
+    
+    // Copy non-vertical normals into a separate cloud
+    pcl::copyPointCloud(*cloud_in, non_vertical_normals, *cloud_out);
+
+    for (int i = 0; i < non_vertical_normals.indices.size(); i++) {
+      geometry_msgs::Pose p;
+      p.position.x = cloud_in->points[non_vertical_normals.indices[i]].x;
+      p.position.y = cloud_in->points[non_vertical_normals.indices[i]].y;
+      p.position.z = cloud_in->points[non_vertical_normals.indices[i]].z;
+
+      double nx = cloud_normals->points[non_vertical_normals.indices[i]].normal_x;
+      double ny = cloud_normals->points[non_vertical_normals.indices[i]].normal_y;
+      double nz = cloud_normals->points[non_vertical_normals.indices[i]].normal_z;
+
+      // Construct rotation matrix to align frame transform with the normal vector
+      tf2::Matrix3x3 rot_mat;
+      // First basis vector is the vector we want to align
+      rot_mat[0] = tf2::Vector3(nx, ny, nz);
+      if (std::abs(nz) < 0.9) {
+        // Vector is not close to vertical --> use x and y components to create orthogonal vector
+        rot_mat[1] = tf2::Vector3(-ny, nx, 0);
+      } else {
+        // Vector is close to vertical --> use y and z components to make orthogonal vector
+        rot_mat[1] = tf2::Vector3(0, -nz, ny);
+      }
+      // Normalize the generated orthogonal vector, because it is not necessarily unit length
+      rot_mat[1].normalize();
+      // Cross product produces the third basis vector of the rotation matrix
+      rot_mat[2] = rot_mat[0].cross(rot_mat[1]);
+
+      tf2::Quaternion q;
+      rot_mat.transpose().getRotation(q);
+
+      // Fill orientation of pose structure
+      tf2::convert(q, p.orientation);
+    }
+  }
   void final_project::euclideanClustering(const pcl::PointCloud<pcl::PointXYZ>::Ptr& cloud_in,
                                       std::vector<pcl::PointCloud<pcl::PointXYZ>::Ptr>& cluster_clouds)
   {
@@ -628,6 +702,23 @@ namespace audibot_final_project {
       box.pose.orientation.w = 1.0;
       box.id = bbox_id++;
       bboxes.objects.push_back(box);
+    }
+
+    if(bboxes.objects.size() > 0)
+    {
+      box_id_1.data = bboxes.objects[0].id;
+      box_x_1.data  = bboxes.objects[0].pose.position.x;
+      box_y_1.data  = bboxes.objects[0].pose.position.y;
+      box_z_1.data  = bboxes.objects[0].pose.position.z;
+      
+      ROS_INFO("PCL Distance_1: %d /n", box_x_1.data);
+
+      box_id_2.data = bboxes.objects[1].id;
+      box_x_2.data  = bboxes.objects[1].pose.position.x;
+      box_y_2.data  = bboxes.objects[1].pose.position.y;
+      box_z_2.data  = bboxes.objects[1].pose.position.z;
+
+      ROS_INFO("PCL Distance_1: %d /n", box_x_2.data);
     }
   }
 }

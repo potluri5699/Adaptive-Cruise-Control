@@ -26,6 +26,7 @@
           <scan>
             <horizontal>
               <samples>360</samples>
+              <!-- <samples>10000</samples> -->
               <resolution>1</resolution>
               <min_angle>-0.786</min_angle>
               <max_angle>0.786</max_angle>
