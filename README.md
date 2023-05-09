@@ -1,2 +1,1 @@
-# ece5532_final_project
-Audibot Cruise Control
+We have developed a project to implement Adaptive Cruise Control algorithm and make the vehicle follow the pre-programmed route. Implemented collision avoidance by computing the distance from GPS coordinates. Added LIDAR sensor and camera in the gazebo world and developed algorithms to maintain safe following distance. Integrated point cloud (PCL) library for 3D object detection and projected them onto RVIZ.  
